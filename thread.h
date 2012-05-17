@@ -3,23 +3,25 @@
 
 #ifdef _WIN32
 	#include <windows.h>
+	#include "winsock2.h"
 	#define FAMILY_WINDOWS
 #elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__LINUX__) || defined(__linux__) || defined(MACOSX) || defined(__APPLE__) || defined	(__DARWIN__) || defined(__sun)
 	#define FAMILY_UNIX
 	#include <pthread.h>
+	#include <semaphore.h>
 #else
 	#error NOT IMPLEMENTED
 #endif
 
 class IThread
 {
-	protected:
+protected:
 	virtual void DoStart() = 0;
 	virtual void DoStop() = 0;
 	virtual void DoFinish() = 0;
 	virtual bool DoRunning() = 0;
 
-	public:
+public:
 	void Start() { return DoStart(); }
 	void Stop() { return DoStop(); }
 	void Finish() { return DoFinish(); }
@@ -30,7 +32,7 @@ class IThread
 template<class Class>
 class CThread : public IThread
 {
-	private:
+private:
 	#ifdef FAMILY_UNIX
 	pthread_t m_Thread;
 	#else
@@ -54,9 +56,10 @@ class CThread : public IThread
 		pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 		#endif
 		reinterpret_cast<CThread<Class> *>(pObject)->Action();
+		return 0;
 	}
 
-	protected:
+protected:
 	void DoStart()
 	{
 		if(m_Running)
@@ -102,13 +105,13 @@ class CThread : public IThread
 		return m_Running;
 	}
 
-	public:
+public:
 	CThread(Class *pObject, void(Class::*pMethod)()) : m_pObject(pObject), m_pMethod(pMethod), m_Running(false) {}
 } ;
 
 class CMutex
 {
-	private:
+private:
 	#ifdef FAMILY_UNIX
 	pthread_mutex_t m_Mutex;
 	#else
@@ -117,7 +120,7 @@ class CMutex
 	bool m_Locked;
 	
 	
-	public:
+public:
 	CMutex()
 	{
 		#ifdef FAMILY_UNIX
@@ -181,6 +184,100 @@ class CMutex
 
 	bool IsLocked() { return m_Locked; }
 } ;
+
+class CSemaphore
+{
+private:
+	#ifdef FAMILY_UNIX
+	sem_t m_Semaphore;
+	#else
+	HANDLE m_Semaphore;
+	#endif
+public:
+	CSemaphore(unsigned int Value, int Pshared = 0)
+	{
+		#ifdef FAMILY_UNIX
+		sem_init(&m_Semaphore, Pshared, Value);
+		#else
+		m_Semaphore = CreateSemaphore(
+		NULL,	// pointer to security attributes
+		Value,	// initial count
+		Value,	// maximum count
+		NULL	// pointer to semaphore-object name
+		);
+		#endif
+	}
+	~CSemaphore()
+	{
+		#ifdef FAMILY_UNIX
+		sem_destroy(&m_Semaphore);
+		#else
+		#endif
+	}
+	int Wait()
+	{
+		#ifdef FAMILY_UNIX
+		return sem_wait(&m_Semaphore);
+		#else
+		return WaitForSingleObject(
+		m_Semaphore,	// handle to object to wait for
+		INFINITE		// time-out interval in milliseconds
+		);
+		#endif
+	}
+	int TryWait()
+	{
+		#ifdef FAMILY_UNIX
+		return sem_trywait(&m_Semaphore);
+		#else
+		return WaitForSingleObject(
+		m_Semaphore,	// handle to object to wait for
+		0		// time-out interval in milliseconds
+		);
+		#endif
+	}
+	int TimedWait(long Sec, long Usec)
+	{
+		#ifdef FAMILY_UNIX
+		Usec *= Usec;
+		struct timespec Time = { Sec, Usec};
+		return sem_timedwait(&m_Semaphore, Time);
+		#else
+		return WaitForSingleObject(
+		m_Semaphore,				// handle to object to wait for
+		Sec * 1000 + Usec / 1000	// time-out interval in milliseconds
+		);
+		return 0;
+		#endif
+	}
+	int Post()
+	{
+		#ifdef FAMILY_UNIX
+		return sem_post(&m_Semaphore);
+		#else
+		return ReleaseSemaphore(
+		m_Semaphore,	// handle to the semaphore object
+		1,				// amount to add to current count
+		NULL			// address of previous count
+		);
+		return 0;
+		#endif
+	}
+	int GetValue()
+	{
+		long int Value;
+		#ifdef FAMILY_UNIX
+		return sem_getvalue(&m_Semaphore, &Value);
+		#else
+		return ReleaseSemaphore(
+		m_Semaphore,	// handle to the semaphore object
+		0,			// amount to add to current count
+		&Value			// address of previous count
+		);
+		#endif
+		return Value;
+	}
+};
 
 template<class Class>
 CThread<Class>* CreateThread(Class *pObject, void(Class::*pMethod)()) { return new CThread<Class>(pObject, pMethod); }
