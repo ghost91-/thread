@@ -1,6 +1,10 @@
 #ifndef THREAD_DEFINED
 #define THREAD_DEFINED
 
+#include <iostream>
+#include <cerrno>
+#include <stdexcept>
+
 #ifdef _WIN32
 	#include <windows.h>
 	#include "winsock2.h"
@@ -188,16 +192,19 @@ public:
 class CSemaphore
 {
 private:
+	const char *m_pName;
 	#ifdef FAMILY_UNIX
-	sem_t m_Semaphore;
+	sem_t *m_pSemaphore;
 	#else
 	HANDLE m_Semaphore;
 	#endif
 public:
-	CSemaphore(unsigned int Value, int Pshared = 0)
+	CSemaphore(const char *pName, unsigned int Value, int Flags = O_EXCL | O_CREAT, int Mode = S_IWUSR | S_IRUSR): m_pName (pName)
 	{
 		#ifdef FAMILY_UNIX
-		sem_init(&m_Semaphore, Pshared, Value);
+		m_pSemaphore = sem_open(pName, Flags, Mode, Value);
+		if(m_pSemaphore == SEM_FAILED)
+			throw std::logic_error(strerror(errno));
 		#else
 		m_Semaphore = CreateSemaphore(
 		NULL,	// pointer to security attributes
@@ -210,14 +217,15 @@ public:
 	~CSemaphore()
 	{
 		#ifdef FAMILY_UNIX
-		sem_destroy(&m_Semaphore);
+		sem_close(m_pSemaphore);
+		sem_unlink(m_pName);
 		#else
 		#endif
 	}
 	int Wait()
 	{
 		#ifdef FAMILY_UNIX
-		return sem_wait(&m_Semaphore);
+		return sem_wait(m_pSemaphore);
 		#else
 		return WaitForSingleObject(
 		m_Semaphore,	// handle to object to wait for
@@ -228,32 +236,18 @@ public:
 	int TryWait()
 	{
 		#ifdef FAMILY_UNIX
-		return sem_trywait(&m_Semaphore);
+		return sem_trywait(m_pSemaphore);
 		#else
 		return WaitForSingleObject(
 		m_Semaphore,	// handle to object to wait for
-		0		// time-out interval in milliseconds
+		0				// time-out interval in milliseconds
 		);
-		#endif
-	}
-	int TimedWait(long Sec, long Usec)
-	{
-		#ifdef FAMILY_UNIX
-		Usec *= Usec;
-		struct timespec Time = { Sec, Usec};
-		return sem_timedwait(&m_Semaphore, Time);
-		#else
-		return WaitForSingleObject(
-		m_Semaphore,				// handle to object to wait for
-		Sec * 1000 + Usec / 1000	// time-out interval in milliseconds
-		);
-		return 0;
 		#endif
 	}
 	int Post()
 	{
 		#ifdef FAMILY_UNIX
-		return sem_post(&m_Semaphore);
+		return sem_post(m_pSemaphore);
 		#else
 		return ReleaseSemaphore(
 		m_Semaphore,	// handle to the semaphore object
@@ -262,20 +256,6 @@ public:
 		);
 		return 0;
 		#endif
-	}
-	int GetValue()
-	{
-		long int Value;
-		#ifdef FAMILY_UNIX
-		return sem_getvalue(&m_Semaphore, &Value);
-		#else
-		return ReleaseSemaphore(
-		m_Semaphore,	// handle to the semaphore object
-		0,			// amount to add to current count
-		&Value			// address of previous count
-		);
-		#endif
-		return Value;
 	}
 };
 
