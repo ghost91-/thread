@@ -1,20 +1,24 @@
 #include "thread.h"
 #include <iostream>
-#include <stdexcept>
+#ifdef _WIN32
+	#include <windows.h>
+	#define sleep(t) Sleep(t*1000)
+#endif
 
 class CClass1
 {
-	CSemaphore *m_pSemaphore;
+	CMutex *m_pMutex;
 	public:
-	CClass1(CSemaphore *pSemaphore) : m_pSemaphore(pSemaphore) {}
+	CClass1(CMutex *pMutex) : m_pMutex(pMutex) {}
 
 	void Function()
 	{
 		for(int i = 0; i < 5; i++)
 		{
-			m_pSemaphore->Wait();
-			std::cout<<"Thread 1 has decremented the Semaphore"<<std::endl;
-			m_pSemaphore->Post();
+			m_pMutex->Lock();
+			std::cout<<"Thread 1 has locked the Mutex"<<std::endl;
+			sleep(1);
+			m_pMutex->Unlock();
 		}
 		return;
 	}
@@ -22,17 +26,18 @@ class CClass1
 
 class CClass2
 {
-	CSemaphore *m_pSemaphore;
+	CMutex *m_pMutex;
 	public:
-	CClass2(CSemaphore *pSemaphore) : m_pSemaphore(pSemaphore) {}
+	CClass2(CMutex *pMutex) : m_pMutex(pMutex) {}
 
 	void Function()
 	{
 		for(int i = 0; i < 5; i++)
 		{
-			m_pSemaphore->Wait();
-			std::cout<<"Thread 2 has decremented the Semaphore"<<std::endl;
-			m_pSemaphore->Post();
+			m_pMutex->Lock();
+			std::cout<<"Thread 2 has locked the Mutex"<<std::endl;
+			sleep(1);
+			m_pMutex->Unlock();
 		}
 		return;
 	}
@@ -42,9 +47,9 @@ int main()
 {
 	try
 	{
-		CSemaphore Semaphore("/semaphore.sem", 1);
-		CClass1 Class1(&Semaphore);
-		CClass2 Class2(&Semaphore);
+		CMutex Mutex;
+		CClass1 Class1(&Mutex);
+		CClass2 Class2(&Mutex);
 		IThread *pThread1 = CreateThread(&Class1, &CClass1::Function);
 		IThread *pThread2 = CreateThread(&Class2, &CClass2::Function);
 		pThread1->Start();
@@ -56,7 +61,7 @@ int main()
 	}
 	catch(std::logic_error &except)
 	{
-		std::cout<<"Semaphore error: "<<except.what()<<std::endl;
+		std::cout<<"Mutex error: "<<except.what()<<std::endl;
 		return 1;
 	}
 

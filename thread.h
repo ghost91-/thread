@@ -2,17 +2,13 @@
 #define THREAD_DEFINED
 
 #include <iostream>
-#include <cerrno>
-#include <stdexcept>
 
 #ifdef _WIN32
 	#include <windows.h>
-	#include "winsock2.h"
 	#define FAMILY_WINDOWS
 #elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__LINUX__) || defined(__linux__) || defined(MACOSX) || defined(__APPLE__) || defined	(__DARWIN__) || defined(__sun)
 	#define FAMILY_UNIX
 	#include <pthread.h>
-	#include <semaphore.h>
 #else
 	#error NOT IMPLEMENTED
 #endif
@@ -188,76 +184,6 @@ public:
 
 	bool IsLocked() { return m_Locked; }
 } ;
-
-class CSemaphore
-{
-private:
-	const char *m_pName;
-	#ifdef FAMILY_UNIX
-	sem_t *m_pSemaphore;
-	#else
-	HANDLE m_Semaphore;
-	#endif
-public:
-	CSemaphore(const char *pName, unsigned int Value, int Flags = O_EXCL | O_CREAT, int Mode = S_IWUSR | S_IRUSR): m_pName (pName)
-	{
-		#ifdef FAMILY_UNIX
-		m_pSemaphore = sem_open(pName, Flags, Mode, Value);
-		if(m_pSemaphore == SEM_FAILED)
-			throw std::logic_error(strerror(errno));
-		#else
-		m_Semaphore = CreateSemaphore(
-		NULL,	// pointer to security attributes
-		Value,	// initial count
-		Value,	// maximum count
-		NULL	// pointer to semaphore-object name
-		);
-		#endif
-	}
-	~CSemaphore()
-	{
-		#ifdef FAMILY_UNIX
-		sem_close(m_pSemaphore);
-		sem_unlink(m_pName);
-		#else
-		#endif
-	}
-	int Wait()
-	{
-		#ifdef FAMILY_UNIX
-		return sem_wait(m_pSemaphore);
-		#else
-		return WaitForSingleObject(
-		m_Semaphore,	// handle to object to wait for
-		INFINITE		// time-out interval in milliseconds
-		);
-		#endif
-	}
-	int TryWait()
-	{
-		#ifdef FAMILY_UNIX
-		return sem_trywait(m_pSemaphore);
-		#else
-		return WaitForSingleObject(
-		m_Semaphore,	// handle to object to wait for
-		0				// time-out interval in milliseconds
-		);
-		#endif
-	}
-	int Post()
-	{
-		#ifdef FAMILY_UNIX
-		return sem_post(m_pSemaphore);
-		#else
-		return ReleaseSemaphore(
-		m_Semaphore,	// handle to the semaphore object
-		1,				// amount to add to current count
-		NULL			// address of previous count
-		);
-		return 0;
-		#endif
-	}
-};
 
 template<class Class>
 CThread<Class>* CreateThread(Class *pObject, void(Class::*pMethod)()) { return new CThread<Class>(pObject, pMethod); }
