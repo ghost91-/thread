@@ -1,0 +1,1 @@
+This provides a small and leightweight class for threads. It works on Windows and on posix systems.
